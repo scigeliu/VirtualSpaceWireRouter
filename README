@@ -1,0 +1,8 @@
+This is a tentative repository for VirtualSpaceWireRouter which is intended to be used with SpaceWire RMAP Library and SpaceWire-to-GigabitEther.
+The VirtualSpaceWireRouter class emulates a 5-port router, accepting 4 socket connection from other proccesses using the SpaceWireIFOverTCP class, and connecting the remaining one port to the real SpaceWire-to-GigabitEther device.
+By using this class, users can share one actual SpaceWire-to-GigabitEther with multiple processes with almost no change to their source codes.
+See a user guide document in the documents/ folder.
+
+
+Takayuki Yuasa
+20120210
