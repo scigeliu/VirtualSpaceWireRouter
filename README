@@ -3,6 +3,8 @@ The VirtualSpaceWireRouter class emulates a 5-port router, accepting 4 socket co
 By using this class, users can share one actual SpaceWire-to-GigabitEther with multiple processes with almost no change to their source codes.
 See a user guide document in the documents/ folder.
 
+In the near future, this class will be included by the open-source SpaceWire RMAP Library which has been developed and maintained by The Open-source SpaceWire project.
+Visit https://galaxy.astro.isas.jaxa.jp/~yuasa/SpaceWire/
 
 Takayuki Yuasa
 20120210
