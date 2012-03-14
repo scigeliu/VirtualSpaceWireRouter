@@ -5,9 +5,14 @@
  *      Author: yuasa
  */
 
+#include <string>
+#include <vector>
+#include <stdint.h>
 #include "CxxUtilities/Thread.hh"
 #include "CxxUtilities/Time.hh"
 #include "SpaceWire.hh"
+
+#define NO_XMLLODER
 
 class Port: public CxxUtilities::StoppableThread {
 public:
@@ -28,26 +33,68 @@ public:
 	bool spwifOpened;
 
 public:
-	Port(std::string portName, CxxUtilities::Condition& receiveCondition,
-			CxxUtilities::Condition& transferredCondition, uint32_t port) {//server mode
+	class ClosedAction: public SpaceWireIFActionCloseAction, public CxxUtilities::Thread {
+	private:
+		Port* parent;
+
+	public:
+		ClosedAction(Port* parent) :
+				parent(parent) {
+		}
+
+
+	public:
+		void run(){
+			CxxUtilities::Condition c;
+			//check if closed
+			while (true) {
+				if (parent->spwifOpened == false) {
+					parent->start();
+					return;
+				}
+				c.wait(10); //wait 10ms
+			}
+		}
+
+	public:
+		void doAction(SpaceWireIF* spwif) {
+			this->start();
+		}
+	};
+
+private:
+	ClosedAction* closedAction;
+
+public:
+	Port(std::string portName, CxxUtilities::Condition& receiveCondition, CxxUtilities::Condition& transferredCondition,
+			uint32_t port) { //server mode
 		spwifOpened = false;
-		this->spwif = spwif;
+		this->spwif = NULL;
 		this->mode = ServerPort;
 		this->portName = portName;
 		this->port = port;
 		this->receiveCondition = &receiveCondition;
 		this->transferredCondition = &transferredCondition;
+		closedAction=new ClosedAction(this);
 	}
-	Port(std::string portName, CxxUtilities::Condition& receiveCondition,
-			CxxUtilities::Condition& transferredCondition, std::string url, uint32_t port) {//client mode
+	Port(std::string portName, CxxUtilities::Condition& receiveCondition, CxxUtilities::Condition& transferredCondition,
+			std::string url, uint32_t port) { //client mode
 		spwifOpened = false;
-		this->spwif = spwif;
+		this->spwif = NULL;
 		this->mode = ClientPort;
 		this->url = url;
 		this->portName = portName;
 		this->port = port;
 		this->receiveCondition = &receiveCondition;
 		this->transferredCondition = &transferredCondition;
+		closedAction=new ClosedAction(this);
+	}
+	~Port(){
+		if(spwif!=NULL){
+			delete ((SpaceWireIFOverTCP*)spwif);
+			spwif=NULL;
+		}
+		delete closedAction;
 	}
 public:
 	void run() {
@@ -59,6 +106,7 @@ public:
 			cout << "Connecting " << portName << "..." << endl;
 			spwif = new SpaceWireIFOverTCP(url, port);
 		}
+		spwif->addSpaceWireIFCloseAction(closedAction);
 		loop_open: try {
 			spwif->open();
 		} catch (...) {
@@ -70,22 +118,36 @@ public:
 
 		stopped = false;
 		while (!stopped) {
-			receivedPacket = spwif->receive();
+			try {
+				receivedPacket = spwif->receive();
+			} catch (SpaceWireIFException e) {
+				if (e.getStatus() == SpaceWireIFException::Disconnected) {
+					goto finalize_run;
+				}
+			}
 			receiveCondition->signal();
 			transferredCondition->wait();
 		}
+		finalize_run: spwif->close();
+		delete ((SpaceWireIFOverTCP*)spwif);
+		spwif=NULL;
 		spwifOpened = false;
+		cout << portName << " has been disconnected." << endl;
+		return;
 	}
+
 private:
 	CxxUtilities::Mutex sendMutex;
+
 public:
 	void send(std::vector<uint8_t>* data) {
 		sendMutex.lock();
 		spwif->sendVectorPointer(data);
 		sendMutex.unlock();
 	}
-public:
-	void close() {
+
+	void close(){
+		spwif->clearSpaceWireIFCloseActions();
 		spwif->close();
 	}
 };
@@ -106,10 +168,10 @@ public:
 			using namespace std;
 			stopped = false;
 			while (!stopped) {
-				parent->receiveConditions[watchingPort].wait();//wait for a packet
+				parent->receiveConditions[watchingPort].wait(); //wait for a packet
 				//received
 				parent->nReceivedPackets[watchingPort]++;
-				parent->routePacket(parent->ports[watchingPort]->receivedPacket,watchingPort);
+				parent->routePacket(parent->ports[watchingPort]->receivedPacket, watchingPort);
 			}
 		}
 	};
@@ -137,12 +199,12 @@ public:
 		receveThreads.resize(MaxPortNumber + 1);
 
 		ports[0] = NULL;
-		ports[1] = new Port("Port1 (to SpaceWire-to-GigabitEther)", receiveConditions[1], transferredConditions[1],
-				url, 10030);//client
-		ports[2] = new Port("Port2", receiveConditions[2], transferredConditions[2], 10031);//server
-		ports[3] = new Port("Port3", receiveConditions[3], transferredConditions[3], 10032);//server
-		ports[4] = new Port("Port4", receiveConditions[4], transferredConditions[4], 10033);//server
-		ports[5] = new Port("Port5", receiveConditions[5], transferredConditions[5], 10034);//server
+		ports[1] = new Port("Port1 (to SpaceWire-to-GigabitEther)", receiveConditions[1], transferredConditions[1], url,
+				10030); //client
+		ports[2] = new Port("Port2", receiveConditions[2], transferredConditions[2], 10031); //server
+		ports[3] = new Port("Port3", receiveConditions[3], transferredConditions[3], 10032); //server
+		ports[4] = new Port("Port4", receiveConditions[4], transferredConditions[4], 10033); //server
+		ports[5] = new Port("Port5", receiveConditions[5], transferredConditions[5], 10034); //server
 
 		for (size_t i = 1; i <= MaxPortNumber; i++) {
 			ports[i]->start();
@@ -150,6 +212,7 @@ public:
 			receveThreads[i]->start();
 		}
 	}
+
 public:
 	const static uint8_t MaxPortNumber = 5;
 	const static uint8_t PortNumberOfClientPort = 1;
@@ -159,7 +222,7 @@ public:
 		stopped = false;
 		while (!stopped) {
 			using namespace std;
-			sleep(1000);
+			sleep(5000);
 			cout << endl;
 			cout << CxxUtilities::Time::getCurrentTimeAsString() << endl;
 			cout << "Port | Incoming packets | Outgoing packets" << endl;
@@ -178,7 +241,7 @@ public:
 
 		using namespace std;
 		uint8_t pathAddress;
-		vector<uint8_t>::iterator it=data->begin();
+		vector<uint8_t>::iterator it = data->begin();
 
 		//check size
 		if (data->size() == 0 || data->size() == 1) {
@@ -203,7 +266,7 @@ public:
 			if (ports[pathAddress]->spwifOpened == true) {
 				//send the packet if the destination port is operational
 				ports[pathAddress]->send(data);
-				cout << "### from " << (uint32_t)fromPort << " to " << (uint32_t)pathAddress << endl;
+				cout << "### from " << (uint32_t) fromPort << " to " << (uint32_t) pathAddress << endl;
 				SpaceWireUtilities::dumpPacket(data);
 				nSentPackets[pathAddress]++;
 			} else {

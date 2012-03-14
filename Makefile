@@ -34,14 +34,14 @@ ifndef CXXUTILITIES_PATH
 CXXUTILITIES_PATH = $(SPACEWIRERMAPLIBRARY_PATH)/externalLibraries/CxxUtilities
 endif
 
-#Check XMLUtilities
-ifndef (XMLUTILITIES_PATH
-XMLUTILITIES_PATH = $(SPACEWIRERMAPLIBRARY_PATH)/externalLibraries/XMLUtilities
-endif
+#VirtualSpaceWireRouter does not use XML-like RMAP Target node definition.
+##Check XMLUtilities
+#ifndef (XMLUTILITIES_PATH
+#XMLUTILITIES_PATH = $(SPACEWIRERMAPLIBRARY_PATH)/externalLibraries/XMLUtilities
+#endif
 
 #Set compiler/linker flags
-CXXFLAGS = -I$(SPACEWIRERMAPLIBRARY_PATH)/includes -I$(CXXUTILITIES_PATH)/includes -I$(XMLUTILITIES_PATH) -I/$(XERCESDIR)/include
-LDFLAGS = -L/$(XERCESDIR)/lib -lxerces-c
+CXXFLAGS = -I$(SPACEWIRERMAPLIBRARY_PATH)/includes -I$(CXXUTILITIES_PATH)/includes
 
 
 TARGETS_OBJECTS = $(addsuffix .o, $(basename $(TARGETS)))
